@@ -12,3 +12,4 @@ categories = ["filesystem", "os::linux-apis"]
 
 [dependencies]
 regex = "1"
+thiserror = "2"

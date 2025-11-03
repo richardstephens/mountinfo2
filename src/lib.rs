@@ -27,6 +27,9 @@ use std::path::{Path, PathBuf};
  */
 use std::str::FromStr;
 
+mod error;
+pub use error::{MountInfoError, ParseLineError};
+
 /// Some common filesystems types
 /// The String representation must be the same when creating using `from_str`
 /// and when converting to `String` using `fmt::Display`
@@ -114,18 +117,28 @@ pub struct MountPoint {
 
 impl MountPoint {
     /// Creates a new mount point from a line of the `/proc/self/mountinfo` file.
-    fn parse_proc_mountinfo_line(line: &String) -> Result<Self, io::Error> {
+    fn parse_proc_mountinfo_line(line: &String) -> Result<Self, ParseLineError> {
         // The line format is:
         // <id> <parent_id> <major>:<minor> <root> <mount_point> <mount_options> <optional tags> "-" <fstype> <mount souce> <super options>
         // Ref: https://www.kernel.org/doc/Documentation/filesystems/proc.txt - /proc/<pid>/mountinfo - Information about mounts
         let re = Regex::new(r"(\d*)\s(\d*)\s(\d*:\d*)\s([\S]*)\s([\S]*)\s([A-Za-z0-9,]*)\s([A-Za-z0-9:\s]*)\s\- ([\S]*)\s([\S]*)(.*)").unwrap();
         if !re.is_match(line) {
-            return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid format"));
+            return Err(ParseLineError::InvalidFormat);
         }
-        let caps = re.captures(line).unwrap();
+        let caps = re
+            .captures(line)
+            .ok_or(ParseLineError::MissingCaptureGroups)?;
         Ok(MountPoint {
-            id: Some(caps[1].parse::<u32>().unwrap()),
-            parent_id: Some(caps[2].parse::<u32>().unwrap()),
+            id: Some(
+                caps[1]
+                    .parse::<u32>()
+                    .map_err(ParseLineError::InvalidMountId)?,
+            ),
+            parent_id: Some(
+                caps[2]
+                    .parse::<u32>()
+                    .map_err(ParseLineError::InvalidParentId)?,
+            ),
             root: Some(PathBuf::from(caps[4].to_string())),
             path: PathBuf::from(caps[5].to_string()),
             options: MountOptions::new(&caps[6].to_string()),
@@ -189,7 +202,7 @@ impl MountInfo {
     /// Creates a new instance of the MountInfo struct.
     /// It will read the contents of the /proc/self/mountinfo file, if it exists.
     /// If it does not exist, it will fall-back to read the contents of the /etc/mtab file.
-    pub fn new() -> Result<Self, io::Error> {
+    pub fn new() -> Result<Self, MountInfoError> {
         if Path::new(MountInfo::MOUNT_INFO_FILE).exists() {
             let mut mtab = File::open("/proc/self/mountinfo")?;
             return Ok(MountInfo {
@@ -198,13 +211,10 @@ impl MountInfo {
         } else if Path::new(MountInfo::MTAB_FILE).exists() {
             let mut mtab = File::open(MountInfo::MTAB_FILE)?;
             return Ok(MountInfo {
-                mounting_points: MountInfo::parse_mtab(&mut mtab)?,
+                mounting_points: MountInfo::parse_mtab(&mut mtab).map_err(MountInfoError::Io)?,
             });
         } else {
-            return Err(io::Error::new(
-                io::ErrorKind::NotFound,
-                "No mountinfo file found",
-            ));
+            return Err(MountInfoError::NoMountInfoFile);
         }
     }
 
@@ -231,11 +241,17 @@ impl MountInfo {
 
     fn parse_proc_mountinfo(
         file: &mut dyn std::io::Read,
-    ) -> Result<Vec<MountPoint>, std::io::Error> {
+    ) -> Result<Vec<MountPoint>, MountInfoError> {
         let mut result = Vec::new();
         let reader = io::BufReader::new(file);
-        for line in reader.lines() {
-            let mpoint = MountPoint::parse_proc_mountinfo_line(&line?)?;
+        for (line_num, line) in reader.lines().enumerate() {
+            let line = line?;
+            let mpoint = MountPoint::parse_proc_mountinfo_line(&line).map_err(|source| {
+                MountInfoError::ParseError {
+                    line: line_num + 1,
+                    source,
+                }
+            })?;
             result.push(mpoint);
         }
         Ok(result)
