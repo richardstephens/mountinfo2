@@ -20,29 +20,34 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-
-use mountinfo::{MountInfo, ReadWrite, MountPoint};
+use mountinfo::{MountInfo, MountPoint, ReadWrite};
 
 fn main() {
     let mtab = MountInfo::new().unwrap();
 
     println!("Read-only mount points:");
-    for mount_point in mtab.mounting_points.iter().filter(|&mount_point| {
-        match mount_point.options.read_write {
+    for mount_point in mtab
+        .mounting_points
+        .iter()
+        .filter(|&mount_point| match mount_point.options.read_write {
             ReadWrite::ReadOnly => true,
-            _ => false
-        }
-    }).collect::<Vec<&MountPoint>>() {
+            _ => false,
+        })
+        .collect::<Vec<&MountPoint>>()
+    {
         println!("{:?}", mount_point);
     }
 
     println!("Read-write mount points:");
-    for mount_point in mtab.mounting_points.iter().filter(|&mount_point| {
-        match mount_point.options.read_write {
+    for mount_point in mtab
+        .mounting_points
+        .iter()
+        .filter(|&mount_point| match mount_point.options.read_write {
             ReadWrite::ReadWrite => true,
-            _ => false
-        }
-    }).collect::<Vec<&MountPoint>>() {
+            _ => false,
+        })
+        .collect::<Vec<&MountPoint>>()
+    {
         println!("{:?}", mount_point);
     }
 }

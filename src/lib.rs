@@ -1,3 +1,8 @@
+use regex::Regex;
+use std::fmt;
+use std::fs::File;
+use std::io::{self, BufRead};
+use std::path::{Path, PathBuf};
 /**
  * The MIT License
  * Copyright (c) 2022 Guillem Castro
@@ -20,20 +25,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  * THE SOFTWARE.
  */
-
 use std::str::FromStr;
-use std::path::{Path, PathBuf};
-use std::io::{self, BufRead};
-use std::fs::File;
-use std::fmt;
-use regex::Regex;
 
 /// Some common filesystems types
 /// The String representation must be the same when creating using `from_str`
 /// and when converting to `String` using `fmt::Display`
 #[derive(Debug, PartialEq)]
 pub enum FsType {
-    /// procfs filesystem. Pseudo filesystem that exposes the kernel's process table. 
+    /// procfs filesystem. Pseudo filesystem that exposes the kernel's process table.
     /// Usually mounted at /proc.
     Proc,
     /// overlayfs filesystem. A filesystem that combines multiple lower filesystems into a single directory.
@@ -53,11 +52,10 @@ pub enum FsType {
     /// devtmpfs filesystem.
     Devtmpfs,
     /// Other filesystems.
-    Other(String)
+    Other(String),
 }
 
 impl FromStr for FsType {
-    
     type Err = ();
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -71,14 +69,13 @@ impl FromStr for FsType {
             "ext3" => Ok(FsType::Ext3),
             "ext4" => Ok(FsType::Ext4),
             "devtmpfs" => Ok(FsType::Devtmpfs),
-            _ => Ok(FsType::Other(s.to_string()))
+            _ => Ok(FsType::Other(s.to_string())),
         }
     }
 }
 
 impl fmt::Display for FsType {
-
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { 
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let fsname = match self {
             FsType::Proc => "proc",
             FsType::Overlay => "overlay",
@@ -89,11 +86,10 @@ impl fmt::Display for FsType {
             FsType::Ext3 => "ext3",
             FsType::Ext4 => "ext4",
             FsType::Devtmpfs => "devtmpfs",
-            FsType::Other(ref fsname) => fsname
+            FsType::Other(ref fsname) => fsname,
         };
         write!(f, "{}", fsname)
     }
-
 }
 
 /// A struct representing a mount point.
@@ -117,7 +113,6 @@ pub struct MountPoint {
 }
 
 impl MountPoint {
-    
     /// Creates a new mount point from a line of the `/proc/self/mountinfo` file.
     fn parse_proc_mountinfo_line(line: &String) -> Result<Self, io::Error> {
         // The line format is:
@@ -135,17 +130,15 @@ impl MountPoint {
             path: PathBuf::from(caps[5].to_string()),
             options: MountOptions::new(&caps[6].to_string()),
             fstype: FsType::from_str(&caps[8]).unwrap(),
-            what: caps[9].to_string()
+            what: caps[9].to_string(),
         })
     }
-
 }
 
-#[derive(Debug)]
-#[derive(PartialEq)]
+#[derive(Debug, PartialEq)]
 pub enum ReadWrite {
     ReadOnly,
-    ReadWrite
+    ReadWrite,
 }
 
 /// A struct representing the mount options.
@@ -154,11 +147,10 @@ pub struct MountOptions {
     /// If it was mounted as read-only or read-write.
     pub read_write: ReadWrite,
     /// Additional options, not currently parsed by this library.
-    pub others: Vec<String>
+    pub others: Vec<String>,
 }
 
 impl MountOptions {
-    
     /// Creates a new mount options from a string.
     /// The string must be a comma-separated list of options.
     pub fn new(options: &str) -> Self {
@@ -168,28 +160,23 @@ impl MountOptions {
             match option {
                 "ro" => read_write = ReadWrite::ReadOnly,
                 "rw" => read_write = ReadWrite::ReadWrite,
-                &_ => others.push(option.to_owned())
+                &_ => others.push(option.to_owned()),
             }
         }
-        MountOptions {
-            read_write,
-            others
-        }
+        MountOptions { read_write, others }
     }
-
 }
 
 /// A struct containing the mount information.
 /// Note that it will only contain the mount points visible for the calling process.
-/// If the calling process is inside a chroot, not all mount points will be visible. 
+/// If the calling process is inside a chroot, not all mount points will be visible.
 #[derive(Debug)]
 pub struct MountInfo {
     /// The list of mount points visible for the current process.
-    pub mounting_points: Vec<MountPoint>
+    pub mounting_points: Vec<MountPoint>,
 }
 
 impl MountInfo {
-
     /// The most "modern" file with mount information. Introduced in Linux 2.6.26.
     /// According to the docs, this should be the most reliable (and up-to-date) way to get the mount information.
     const MOUNT_INFO_FILE: &'static str = "/proc/self/mountinfo";
@@ -206,40 +193,45 @@ impl MountInfo {
         if Path::new(MountInfo::MOUNT_INFO_FILE).exists() {
             let mut mtab = File::open("/proc/self/mountinfo")?;
             return Ok(MountInfo {
-                mounting_points: MountInfo::parse_proc_mountinfo(&mut mtab)?
-            })
-        }
-        else if Path::new(MountInfo::MTAB_FILE).exists() {
+                mounting_points: MountInfo::parse_proc_mountinfo(&mut mtab)?,
+            });
+        } else if Path::new(MountInfo::MTAB_FILE).exists() {
             let mut mtab = File::open(MountInfo::MTAB_FILE)?;
             return Ok(MountInfo {
-                mounting_points: MountInfo::parse_mtab(&mut mtab)?
-            })
-        }
-        else {
-            return Err(io::Error::new(io::ErrorKind::NotFound, "No mountinfo file found"))
+                mounting_points: MountInfo::parse_mtab(&mut mtab)?,
+            });
+        } else {
+            return Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "No mountinfo file found",
+            ));
         }
     }
 
-    /// Check if a certain filesystem type is mounted at the given path. 
+    /// Check if a certain filesystem type is mounted at the given path.
     pub fn contains<P: AsRef<Path>>(&self, mounting_point: P, fstype: FsType) -> bool {
         let path = mounting_point.as_ref();
-        let filtered: Vec<&MountPoint> = self.mounting_points.iter().
-            filter(|mts| 
-                mts.path == path.to_owned() && mts.fstype == fstype)
+        let filtered: Vec<&MountPoint> = self
+            .mounting_points
+            .iter()
+            .filter(|mts| mts.path == path.to_owned() && mts.fstype == fstype)
             .collect();
         filtered.len() > 0
     }
 
     /// Check if the given path is a mount point.
     pub fn is_mounted<P: AsRef<Path>>(&self, path: P) -> bool {
-        let filtered: Vec<&MountPoint> = self.mounting_points.iter().
-            filter(|mts| 
-                mts.path == path.as_ref().to_path_buf())
+        let filtered: Vec<&MountPoint> = self
+            .mounting_points
+            .iter()
+            .filter(|mts| mts.path == path.as_ref().to_path_buf())
             .collect();
         filtered.len() > 0
     }
 
-    fn parse_proc_mountinfo(file: &mut dyn std::io::Read) -> Result<Vec<MountPoint>, std::io::Error> {
+    fn parse_proc_mountinfo(
+        file: &mut dyn std::io::Read,
+    ) -> Result<Vec<MountPoint>, std::io::Error> {
         let mut result = Vec::new();
         let reader = io::BufReader::new(file);
         for line in reader.lines() {
@@ -269,7 +261,6 @@ impl MountInfo {
         }
         Ok(results)
     }
-
 }
 
 // unit tests
@@ -280,7 +271,7 @@ mod test {
 
     struct FakeFile {
         s: String,
-        read: bool
+        read: bool,
     }
 
     impl io::Read for FakeFile {
@@ -311,23 +302,29 @@ mod test {
     #[test]
     fn test_contains() {
         let mut file = FakeFile { s: "tmpfs /tmp tmpfs rw,seclabel,nosuid,nodev,size=8026512k,nr_inodes=1048576,inode64 0 0".to_owned(), read: false };
-        let mtab = MountInfo { mounting_points: MountInfo::parse_mtab(&mut file).unwrap() };
+        let mtab = MountInfo {
+            mounting_points: MountInfo::parse_mtab(&mut file).unwrap(),
+        };
         assert_eq!(mtab.contains("/tmp", FsType::Tmpfs), true);
     }
 
     #[test]
     fn test_is_mounted() {
         let mut file = FakeFile { s: "tmpfs /tmp tmpfs rw,seclabel,nosuid,nodev,size=8026512k,nr_inodes=1048576,inode64 0 0".to_owned(), read: false };
-        let mtab = MountInfo { mounting_points: MountInfo::parse_mtab(&mut file).unwrap() };
+        let mtab = MountInfo {
+            mounting_points: MountInfo::parse_mtab(&mut file).unwrap(),
+        };
         assert_eq!(mtab.is_mounted("/tmp"), true);
     }
 
     #[test]
     fn test_mount_options() {
-        let options = MountOptions::new("rw,seclabel,nosuid,nodev,size=8026512k,nr_inodes=1048576,inode64");
+        let options =
+            MountOptions::new("rw,seclabel,nosuid,nodev,size=8026512k,nr_inodes=1048576,inode64");
         assert_eq!(options.read_write, ReadWrite::ReadWrite);
         assert_ne!(options.others.len(), 0);
-        let more_options = MountOptions::new("ro,seclabel,nosuid,nodev,size=8026512k,nr_inodes=1048576,inode64");
+        let more_options =
+            MountOptions::new("ro,seclabel,nosuid,nodev,size=8026512k,nr_inodes=1048576,inode64");
         assert_eq!(more_options.read_write, ReadWrite::ReadOnly);
         assert_ne!(more_options.others.len(), 0);
     }
