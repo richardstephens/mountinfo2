@@ -203,18 +203,32 @@ impl MountInfo {
     /// It will read the contents of the /proc/self/mountinfo file, if it exists.
     /// If it does not exist, it will fall-back to read the contents of the /etc/mtab file.
     pub fn new() -> Result<Self, MountInfoError> {
-        if Path::new(MountInfo::MOUNT_INFO_FILE).exists() {
-            let mut mtab = File::open("/proc/self/mountinfo")?;
-            return Ok(MountInfo {
-                mounting_points: MountInfo::parse_proc_mountinfo(&mut mtab)?,
-            });
-        } else if Path::new(MountInfo::MTAB_FILE).exists() {
+        match Self::new_from_proc() {
+            Err(MountInfoError::NoMountInfoFile) => {}
+            x => {
+                return x;
+            }
+        };
+        if Path::new(MountInfo::MTAB_FILE).exists() {
             let mut mtab = File::open(MountInfo::MTAB_FILE)?;
             return Ok(MountInfo {
                 mounting_points: MountInfo::parse_mtab(&mut mtab).map_err(MountInfoError::Io)?,
             });
         } else {
             return Err(MountInfoError::NoMountInfoFile);
+        }
+    }
+
+    /// Creates a new instance of the MountInfo struct.
+    /// It will read the contents of the /proc/self/mountinfo file, or fail if it does not exist.
+    pub fn new_from_proc() -> Result<Self, MountInfoError> {
+        if Path::new(MountInfo::MOUNT_INFO_FILE).exists() {
+            let mut mtab = File::open(MountInfo::MOUNT_INFO_FILE)?;
+            Ok(MountInfo {
+                mounting_points: MountInfo::parse_proc_mountinfo(&mut mtab)?,
+            })
+        } else {
+            Err(MountInfoError::NoMountInfoFile)
         }
     }
 
