@@ -90,7 +90,7 @@ impl fmt::Display for FsType {
             FsType::Ext3 => "ext3",
             FsType::Ext4 => "ext4",
             FsType::Devtmpfs => "devtmpfs",
-            FsType::Other(ref fsname) => fsname,
+            FsType::Other(fsname) => fsname,
         };
         write!(f, "{}", fsname)
     }
