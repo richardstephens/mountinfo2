@@ -37,6 +37,7 @@ pub use fstype::FsType;
 
 /// A struct representing a mount point.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MountPoint {
     /// The id of the mount point. It is unique for each mount point,
     /// but can be resused afer a call to the umount syscall.
@@ -91,6 +92,11 @@ impl MountPoint {
 }
 
 #[derive(Debug, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "lowercase")
+)]
 pub enum ReadWrite {
     ReadOnly,
     ReadWrite,
@@ -98,6 +104,7 @@ pub enum ReadWrite {
 
 /// A struct representing the mount options.
 #[derive(Debug)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MountOptions {
     /// If it was mounted as read-only or read-write.
     pub read_write: ReadWrite,

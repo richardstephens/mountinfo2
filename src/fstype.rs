@@ -28,6 +28,11 @@ use std::str::FromStr;
 /// The String representation must be the same when creating using `from_str`
 /// and when converting to `String` using `fmt::Display`
 #[derive(Debug, PartialEq)]
+#[cfg_attr(
+    feature = "serde",
+    derive(serde::Serialize, serde::Deserialize),
+    serde(rename_all = "lowercase")
+)]
 pub enum FsType {
     /// procfs filesystem. Pseudo filesystem that exposes the kernel's process table.
     /// Usually mounted at /proc.
