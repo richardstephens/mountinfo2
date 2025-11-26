@@ -54,6 +54,7 @@ pub enum FsType {
     /// devtmpfs filesystem.
     Devtmpfs,
     /// Other filesystems.
+    #[cfg_attr(feature = "serde", serde(untagged))]
     Other(String),
 }
 
@@ -91,5 +92,41 @@ impl fmt::Display for FsType {
             FsType::Other(fsname) => fsname,
         };
         write!(f, "{}", fsname)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_fstype_ext4() {
+        use crate::FsType;
+        use serde_json::Value;
+        assert_eq!(
+            Value::String("ext4".into()),
+            serde_json::to_value(FsType::Ext4).unwrap()
+        );
+
+        assert_eq!(
+            FsType::Ext4,
+            serde_json::from_str::<FsType>("\"ext4\"").unwrap()
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "serde")]
+    fn test_serde_fstype_other() {
+        use crate::FsType;
+        use serde_json::Value;
+        assert_eq!(
+            Value::String("testexmaplefs".into()),
+            serde_json::to_value(FsType::Other("testexmaplefs".into())).unwrap()
+        );
+
+        assert_eq!(
+            FsType::Other("testexmaplefs".into()),
+            serde_json::from_str::<FsType>("\"testexmaplefs\"").unwrap()
+        );
     }
 }
