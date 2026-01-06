@@ -56,7 +56,7 @@ pub struct MountPoint {
     pub options: MountOptions,
 }
 static PROC_MOUNTINFO_LINE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(\d*)\s(\d*)\s(\d*:\d*)\s([\S]*)\s([\S]*)\s([A-Za-z0-9,]*)\s([A-Za-z0-9:\s]*)\s\- ([\S]*)\s([\S]*)(.*)").unwrap()
+    Regex::new(r"(\d*)\s(\d*)\s(\d*:\d*)\s([\S]*)\s([\S]*)\s([A-Za-z0-9,]*)\s(?:([A-Za-z0-9:\s]*)\s)?\- ([\S]*)\s([\S]*)(.*)").unwrap()
 });
 
 impl MountPoint {
@@ -292,6 +292,20 @@ mod test {
         assert_eq!(&PathBuf::from("/boot/efi"), &mount_point.path);
         assert_eq!("/dev/vda15", &mount_point.what);
         assert_eq!(FsType::Other("vfat".into()), mount_point.fstype);
+        assert_eq!(ReadWrite::ReadWrite, mount_point.options.read_write);
+    }
+
+    #[test]
+    fn parse_proc_mountinfo_line_without_optional_fields() {
+        // Test parsing a mountinfo line without optional fields (field 7 is empty, directly followed by "-" separator)
+        let line: String = "3226 513 0:4 mnt:[4026533698] /run/snapd/ns/firefox.mnt rw - nsfs nsfs rw".into();
+        let mount_point = MountPoint::parse_proc_mountinfo_line(&line).unwrap();
+        assert_eq!(Some(3226), mount_point.id);
+        assert_eq!(Some(513), mount_point.parent_id);
+        assert_eq!(Some(PathBuf::from("mnt:[4026533698]")), mount_point.root);
+        assert_eq!(&PathBuf::from("/run/snapd/ns/firefox.mnt"), &mount_point.path);
+        assert_eq!("nsfs", &mount_point.what);
+        assert_eq!(FsType::Other("nsfs".into()), mount_point.fstype);
         assert_eq!(ReadWrite::ReadWrite, mount_point.options.read_write);
     }
 }
