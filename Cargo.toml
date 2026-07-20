@@ -1,6 +1,6 @@
 [package]
 name = "mountinfo2"
-version = "0.2.2"
+version = "0.3.0"
 edition = "2024"
 authors = ["Richard Stephens <richard@richst.dev>", "Guillem Castro <guillem@castrog.dev>"]
 description = "A Rust library for parsing mount points on Linux and other Unix systems."
