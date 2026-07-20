@@ -36,7 +36,7 @@ pub use error::{MountInfoError, ParseLineError};
 pub use fstype::FsType;
 
 /// A struct representing a mount point.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MountPoint {
     /// The id of the mount point. It is unique for each mount point,
@@ -56,12 +56,12 @@ pub struct MountPoint {
     pub options: MountOptions,
 }
 static PROC_MOUNTINFO_LINE_RE: LazyLock<Regex> = LazyLock::new(|| {
-    Regex::new(r"(\d*)\s(\d*)\s(\d*:\d*)\s([\S]*)\s([\S]*)\s([A-Za-z0-9,]*)\s([A-Za-z0-9:\s]*)\s\- ([\S]*)\s([\S]*)(.*)").unwrap()
+    Regex::new(r"(\d*)\s(\d*)\s(\d*:\d*)\s([\S]*)\s([\S]*)\s([A-Za-z0-9,]*)\s([A-Za-z0-9:\s]*)\- ([\S]*)\s([\S]*)(.*)").unwrap()
 });
 
 impl MountPoint {
     /// Creates a new mount point from a line of the `/proc/self/mountinfo` file.
-    fn parse_proc_mountinfo_line(line: &str) -> Result<Self, ParseLineError> {
+    pub fn parse_proc_mountinfo_line(line: &str) -> Result<Self, ParseLineError> {
         // The line format is:
         // <id> <parent_id> <major>:<minor> <root> <mount_point> <mount_options> <optional tags> "-" <fstype> <mount souce> <super options>
         // Ref: https://www.kernel.org/doc/Documentation/filesystems/proc.txt - /proc/<pid>/mountinfo - Information about mounts
@@ -103,7 +103,7 @@ pub enum ReadWrite {
 }
 
 /// A struct representing the mount options.
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct MountOptions {
     /// If it was mounted as read-only or read-write.
@@ -280,6 +280,70 @@ mod test {
             MountOptions::new("ro,seclabel,nosuid,nodev,size=8026512k,nr_inodes=1048576,inode64");
         assert_eq!(more_options.read_write, ReadWrite::ReadOnly);
         assert_ne!(more_options.others.len(), 0);
+    }
+
+    #[test]
+    fn parse_proc_mountinfo_line_with_optional_tags() {
+        // A line with an optional tags field ("shared:275")
+        let line = "94 88 259:2 / /boot/efi rw,relatime shared:275 - vfat /dev/nvme0n1p1 rw,fmask=0022,dmask=0022,codepage=437,iocharset=iso8859-1,shortname=mixed,errors=remount-ro";
+        let mount_point = MountPoint::parse_proc_mountinfo_line(line).unwrap();
+        assert_eq!(
+            MountPoint {
+                id: Some(94),
+                parent_id: Some(88),
+                root: Some(PathBuf::from("/")),
+                what: "/dev/nvme0n1p1".into(),
+                path: PathBuf::from("/boot/efi"),
+                fstype: FsType::Other("vfat".into()),
+                options: MountOptions {
+                    read_write: ReadWrite::ReadWrite,
+                    others: vec!["relatime".into()],
+                },
+            },
+            mount_point
+        );
+    }
+
+    #[test]
+    fn parse_proc_mountinfo_line_without_optional_tags() {
+        // A line with no optional tags field, so "-" directly follows the mount options
+        let line = "2307 513 0:4 mnt:[4026533694] /run/snapd/ns/snapd-desktop-integration.mnt rw - nsfs nsfs rw";
+        let mount_point = MountPoint::parse_proc_mountinfo_line(line).unwrap();
+        assert_eq!(
+            MountPoint {
+                id: Some(2307),
+                parent_id: Some(513),
+                root: Some(PathBuf::from("mnt:[4026533694]")),
+                what: "nsfs".into(),
+                path: PathBuf::from("/run/snapd/ns/snapd-desktop-integration.mnt"),
+                fstype: FsType::Other("nsfs".into()),
+                options: MountOptions {
+                    read_write: ReadWrite::ReadWrite,
+                    others: vec![],
+                },
+            },
+            mount_point
+        );
+    }
+
+    #[test]
+    fn parse_testdata_files() {
+        for (name, data) in [
+            (
+                "ubuntu",
+                include_str!("testdata/proc_self_mountinfo_ubuntu.txt"),
+            ),
+            (
+                "alpine",
+                include_str!("testdata/proc_self_mountinfo_alpine.txt"),
+            ),
+        ] {
+            let mount_points = MountInfo::parse_proc_mountinfo(&mut Cursor::new(data))
+                .unwrap_or_else(|e| {
+                    panic!("failed to parse {name} testdata: {e}");
+                });
+            assert_eq!(data.lines().count(), mount_points.len());
+        }
     }
 
     #[test]
